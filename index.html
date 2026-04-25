@@ -376,21 +376,14 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 
 <div id="toast" class="toast" style="display:none"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+
 <script>
 // ── STOCKOPS · Supabase backend ──
 
 const SUPA_URL='https://fklknbynqltvtpdgplzh.supabase.co';
 const SUPA_KEY='sb_publishable_yL3d-nKX7ZdgLPPAlNGcJA_X-pZ2mTo';
-
-async function sbFetch(path,opts={}){
-  const res=await fetch(SUPA_URL+'/rest/v1/'+path,{
-    headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'return=representation',...(opts.headers||{})},
-    ...opts
-  });
-  if(!res.ok){const e=await res.text();throw new Error(e);}
-  const txt=await res.text();
-  return txt?JSON.parse(txt):null;
-}
+const sb=supabase.createClient(SUPA_URL,SUPA_KEY);
 // STATE
 let items=[], hist=[], cats=[], user='', filter='all', adjTarget=null, editTarget=null;
 let selColor='#6B7A3A', selEmoji='📦';
@@ -406,13 +399,16 @@ function getCat(id){return cats.find(c=>c.id===id)||{name:'—',icon:'📦',colo
 
 async function loadAll(){
   try{
-    [cats,items,hist]=await Promise.all([
-      sbFetch('categories?order=created_at.asc'),
-      sbFetch('items?order=created_at.desc'),
-      sbFetch('history?order=at.desc&limit=100')
+    const [r1,r2,r3]=await Promise.all([
+      sb.from('categories').select('*').order('created_at',{ascending:true}),
+      sb.from('items').select('*').order('created_at',{ascending:false}),
+      sb.from('history').select('*').order('at',{ascending:false}).limit(100)
     ]);
-    cats=cats||[];items=items||[];hist=hist||[];
-  }catch(e){showToast('Erreur chargement: '+e.message,'danger');}
+    if(r1.error)throw r1.error;
+    if(r2.error)throw r2.error;
+    if(r3.error)throw r3.error;
+    cats=r1.data||[];items=r2.data||[];hist=r3.data||[];
+  }catch(e){showToast('Erreur chargement: '+(e.message||e),'danger');}
 }
 
 function refresh(){renderItems();renderAlerts();updateStats();renderCatList();buildChips();fillCatSelects();renderHist();}
@@ -568,22 +564,20 @@ window.selC=c=>{selColor=c;buildColor();};
 window.addCategory=async function(){
   const name=document.getElementById('c-name').value.trim();
   if(!name)return;
-  try{
-    const row=await sbFetch('categories',{method:'POST',body:JSON.stringify({name,icon:selEmoji,color:selColor})});
-    cats=[...cats,...(Array.isArray(row)?row:[row])];
-    document.getElementById('c-name').value='';
-    showToast('✓ Catégorie "'+name+'" créée','ok');
-    renderCatList();buildChips();fillCatSelects();
-  }catch(e){showToast('Erreur: '+e.message,'danger');}
+  const {data,error}=await sb.from('categories').insert({name,icon:selEmoji,color:selColor}).select().single();
+  if(error){showToast('Erreur: '+error.message,'danger');return;}
+  cats=[...cats,data];
+  document.getElementById('c-name').value='';
+  showToast('✓ Catégorie "'+name+'" créée','ok');
+  renderCatList();buildChips();fillCatSelects();
 };
 window.delCat=async function(id){
   if(!confirm('Supprimer cette catégorie ?'))return;
-  try{
-    await sbFetch('categories?id=eq.'+id,{method:'DELETE'});
-    cats=cats.filter(c=>c.id!==id);
-    showToast('Catégorie supprimée','warn');
-    renderCatList();buildChips();fillCatSelects();renderItems();
-  }catch(e){showToast('Erreur: '+e.message,'danger');}
+  const {error}=await sb.from('categories').delete().eq('id',id);
+  if(error){showToast('Erreur: '+error.message,'danger');return;}
+  cats=cats.filter(c=>c.id!==id);
+  showToast('Catégorie supprimée','warn');
+  renderCatList();buildChips();fillCatSelects();renderItems();
 };
 
 // Image preview
@@ -609,17 +603,19 @@ window.addItem=async function(){
       category_id:document.getElementById('f-cat').value||null,
       image_url:document.getElementById('f-img').value.trim()||null
     };
-    const rows=await sbFetch('items',{method:'POST',body:JSON.stringify(payload)});
-    const newItem=Array.isArray(rows)?rows[0]:rows;
+    const {data:newItem,error:e1}=await sb.from('items').insert(payload).select().single();
+    if(e1)throw e1;
     items.unshift(newItem);
-    await sbFetch('history',{method:'POST',body:JSON.stringify({item_id:newItem.id,item_name:name,action:'Ajout',delta:qty,new_qty:qty,by_user:user,note:'Création article'})});
-    hist=await sbFetch('history?order=at.desc&limit=100')||[];
+    const {error:e2}=await sb.from('history').insert({item_id:newItem.id,item_name:name,action:'Ajout',delta:qty,new_qty:qty,by_user:user,note:'Création article'});
+    if(e2)throw e2;
+    const {data:h}=await sb.from('history').select('*').order('at',{ascending:false}).limit(100);
+    hist=h||[];
     ['f-name','f-qty','f-min','f-unit','f-loc','f-serial','f-img'].forEach(i=>document.getElementById(i).value='');
     document.getElementById('f-cat').value='';
     document.getElementById('prev-add').style.display='none';
     showToast('✓ "'+name+'" ajouté au stock !','ok');
     refresh();switchTab('stock');
-  }catch(e){showToast('Erreur: '+e.message,'danger');}
+  }catch(e){showToast('Erreur: '+(e.message||e),'danger');}
   finally{btn.disabled=false;btn.textContent='Ajouter au stock →';}
 };
 
@@ -629,13 +625,15 @@ window.delItem=async function(id){
   if(!item)return;
   if(!confirm('Supprimer "'+item.name+'" ?'))return;
   try{
-    await sbFetch('history',{method:'POST',body:JSON.stringify({item_id:id,item_name:item.name,action:'Suppression',delta:0,new_qty:0,by_user:user,note:''})});
-    await sbFetch('items?id=eq.'+id,{method:'DELETE'});
+    await sb.from('history').insert({item_id:id,item_name:item.name,action:'Suppression',delta:0,new_qty:0,by_user:user,note:''});
+    const {error}=await sb.from('items').delete().eq('id',id);
+    if(error)throw error;
     items=items.filter(i=>i.id!==id);
-    hist=await sbFetch('history?order=at.desc&limit=100')||[];
+    const {data:h}=await sb.from('history').select('*').order('at',{ascending:false}).limit(100);
+    hist=h||[];
     showToast('✕ "'+item.name+'" supprimé','warn');
     refresh();
-  }catch(e){showToast('Erreur: '+e.message,'danger');}
+  }catch(e){showToast('Erreur: '+(e.message||e),'danger');}
 };
 
 // Adjust
@@ -653,15 +651,18 @@ window.applyAdjust=async function(){
   if(isNaN(delta)||!adjTarget)return;
   const newQty=Math.max(0,(adjTarget.qty||0)+delta);
   try{
-    await sbFetch('items?id=eq.'+adjTarget.id,{method:'PATCH',body:JSON.stringify({qty:newQty,updated_at:new Date().toISOString()})});
-    await sbFetch('history',{method:'POST',body:JSON.stringify({item_id:adjTarget.id,item_name:adjTarget.name,action:delta>=0?'Entrée':'Sortie',delta,new_qty:newQty,by_user:user,note})});
+    const {error:e1}=await sb.from('items').update({qty:newQty,updated_at:new Date().toISOString()}).eq('id',adjTarget.id);
+    if(e1)throw e1;
+    const {error:e2}=await sb.from('history').insert({item_id:adjTarget.id,item_name:adjTarget.name,action:delta>=0?'Entrée':'Sortie',delta,new_qty:newQty,by_user:user,note});
+    if(e2)throw e2;
     const idx=items.findIndex(i=>i.id===adjTarget.id);
-    if(idx!==-1){items[idx].qty=newQty;}
-    hist=await sbFetch('history?order=at.desc&limit=100')||[];
+    if(idx!==-1)items[idx].qty=newQty;
+    const {data:h}=await sb.from('history').select('*').order('at',{ascending:false}).limit(100);
+    hist=h||[];
     closeModal('adjust');
     showToast((delta>=0?'↑ +':'↓ ')+delta+' — '+adjTarget.name,delta>=0?'ok':'warn');
     refresh();
-  }catch(e){showToast('Erreur: '+e.message,'danger');}
+  }catch(e){showToast('Erreur: '+(e.message||e),'danger');}
 };
 
 // Edit
@@ -695,13 +696,14 @@ window.saveEdit=async function(){
       image_url:document.getElementById('e-img').value.trim()||null,
       updated_at:new Date().toISOString()
     };
-    await sbFetch('items?id=eq.'+editTarget.id,{method:'PATCH',body:JSON.stringify(payload)});
+    const {error}=await sb.from('items').update(payload).eq('id',editTarget.id);
+    if(error)throw error;
     const idx=items.findIndex(i=>i.id===editTarget.id);
     if(idx!==-1)items[idx]={...items[idx],...payload};
     closeModal('edit');
     showToast('✓ "'+name+'" modifié','ok');
     refresh();
-  }catch(e){showToast('Erreur: '+e.message,'danger');}
+  }catch(e){showToast('Erreur: '+(e.message||e),'danger');}
 };
 
 window.closeModal=n=>document.getElementById('modal-'+n).style.display='none';
