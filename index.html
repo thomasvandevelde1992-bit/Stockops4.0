@@ -254,7 +254,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
       <button class="tab-btn" data-tab="cats" onclick="switchTab('cats')">🏷️ Catégories</button>
     </div>
   </div>
-  <div class="sync-bar"><div class="sync-dot"></div> Synchronisé en temps réel</div>
+  <div class="sync-bar"><div class="sync-dot"></div> Synchronisé via Supabase</div>
 
   <!-- STOCK -->
 
@@ -270,7 +270,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     </div>
     <div class="filter-chips" id="filter-chips"></div>
     <div class="sec-title" id="items-label">Articles</div>
-    <div class="items-list" id="items-list"><div class="loading"><div class="spinner"></div> Connexion Firebase…</div></div>
+    <div class="items-list" id="items-list"><div class="loading"><div class="spinner"></div> Chargement…</div></div>
     <div class="bottom-safe"></div>
   </div>
 
@@ -376,22 +376,21 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 
 <div id="toast" class="toast" style="display:none"></div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+<script>
+// ── STOCKOPS · Supabase backend ──
 
-const cfg = {
-  apiKey:"AIzaSyAe4y0zXX8ASik1UvxMdPrRPl0KR7V8bys",
-  authDomain:"stockopps-300ea.firebaseapp.com",
-  projectId:"stockopps-300ea",
-  storageBucket:"stockopps-300ea.firebasestorage.app",
-  messagingSenderId:"1033306952352",
-  appId:"1:1033306952352:web:d09fb50fa1b01a092befc5"
-};
+const SUPA_URL='https://fklknbynqltvtpdgplzh.supabase.co';
+const SUPA_KEY='sb_publishable_yL3d-nKX7ZdgLPPAlNGcJA_X-pZ2mTo';
 
-const fb = initializeApp(cfg);
-const db = getFirestore(fb);
-
+async function sbFetch(path,opts={}){
+  const res=await fetch(SUPA_URL+'/rest/v1/'+path,{
+    headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'return=representation',...(opts.headers||{})},
+    ...opts
+  });
+  if(!res.ok){const e=await res.text();throw new Error(e);}
+  const txt=await res.text();
+  return txt?JSON.parse(txt):null;
+}
 // STATE
 let items=[], hist=[], cats=[], user='', filter='all', adjTarget=null, editTarget=null;
 let selColor='#6B7A3A', selEmoji='📦';
@@ -405,40 +404,40 @@ const hexA=(h,a)=>{const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16)
 function getSt(qty,min){if(qty===0)return{cls:'sd-danger',dot:'dot dot-danger',badge:'ab-danger',label:'Épuisé'};if(qty<=min)return{cls:'sd-warn',dot:'dot dot-warn',badge:'ab-warn',label:'Critique'};return{cls:'sd-ok',dot:'dot dot-ok',badge:'',label:'OK'};}
 function getCat(id){return cats.find(c=>c.id===id)||{name:'—',icon:'📦',color:'#8A9A7A'};}
 
+async function loadAll(){
+  try{
+    [cats,items,hist]=await Promise.all([
+      sbFetch('categories?order=created_at.asc'),
+      sbFetch('items?order=created_at.desc'),
+      sbFetch('history?order=at.desc&limit=100')
+    ]);
+    cats=cats||[];items=items||[];hist=hist||[];
+  }catch(e){showToast('Erreur chargement: '+e.message,'danger');}
+}
+
+function refresh(){renderItems();renderAlerts();updateStats();renderCatList();buildChips();fillCatSelects();renderHist();}
+
 // Onboarding
 const ni=document.getElementById('name-input');
 const nb=document.getElementById('name-btn');
 ni.addEventListener('input',()=>nb.disabled=!ni.value.trim());
 ni.addEventListener('keydown',e=>{if(e.key==='Enter'&&ni.value.trim())startApp();});
 
-window.startApp=function(){
+window.startApp=async function(){
   user=ni.value.trim();
+  localStorage.setItem('so_user',user);
   document.getElementById('badge-user').textContent='👤 '+user;
   document.getElementById('screen-onboard').classList.remove('active');
   document.getElementById('screen-main').classList.add('active');
   buildEmoji();buildColor();
-  listenCats();listenItems();listenHist();
+  await loadAll();refresh();
 };
 
-// Listeners
-function listenCats(){
-  onSnapshot(query(collection(db,'categories'),orderBy('createdAt','asc')),snap=>{
-    cats=snap.docs.map(d=>({id:d.id,...d.data()}));
-    fillCatSelects();renderCatList();buildChips();
-  },err=>showToast('Erreur cats: '+err.code,'warn'));
-}
-function listenItems(){
-  onSnapshot(query(collection(db,'items'),orderBy('createdAt','desc')),snap=>{
-    items=snap.docs.map(d=>({id:d.id,...d.data()}));
-    renderItems();renderAlerts();updateStats();
-  },err=>showToast('Erreur Firebase: '+err.code,'danger'));
-}
-function listenHist(){
-  onSnapshot(query(collection(db,'history'),orderBy('at','desc')),snap=>{
-    hist=snap.docs.map(d=>({id:d.id,...d.data()}));
-    renderHist();
-  });
-}
+// Auto-login
+window.addEventListener('DOMContentLoaded',()=>{
+  const saved=localStorage.getItem('so_user');
+  if(saved){ni.value=saved;startApp();}
+});
 
 // Stats
 function updateStats(){
@@ -453,6 +452,31 @@ function updateStats(){
   else b.style.display='none';
 }
 
+
+// Cat selects
+function fillCatSelects(){
+  ['f-cat','e-cat'].forEach(id=>{
+    const el=document.getElementById(id);if(!el)return;
+    const v=el.value;
+    el.innerHTML='<option value="">— Choisir —</option>'+cats.map(c=>`<option value="${c.id}">${c.icon} ${esc(c.name)}</option>`).join('');
+    el.value=v;
+  });
+}
+
+// Cat list
+function renderCatList(){
+  const el=document.getElementById('cat-list');
+  if(!cats.length){el.innerHTML=`<div class="empty"><div class="empty-ico">🏷️</div><div class="empty-txt">Aucune catégorie</div></div>`;return;}
+  el.innerHTML=cats.map(c=>{
+    const cnt=items.filter(i=>i.category_id===c.id).length;
+    return`<div class="cat-card">
+      <div class="cat-ico" style="background:${hexA(c.color,.12)}">${c.icon}</div>
+      <div class="cat-info"><div class="cat-name" style="color:${c.color}">${esc(c.name)}</div><div class="cat-count">${cnt} article${cnt!==1?'s':''}</div></div>
+      <div class="cat-del" onclick="delCat('${c.id}')">✕</div>
+    </div>`;
+  }).join('');
+}
+
 // Chips
 function buildChips(){
   const el=document.getElementById('filter-chips');
@@ -463,14 +487,14 @@ window.setFilter=f=>{filter=f;buildChips();renderItems();};
 // Render items
 function renderItems(){
   const q=(document.getElementById('search-input').value||'').toLowerCase();
-  const f=items.filter(i=>(filter==='all'||i.categoryId===filter)&&(i.name.toLowerCase().includes(q)||(i.location||'').toLowerCase().includes(q)||(i.serial||'').toLowerCase().includes(q)));
+  const f=items.filter(i=>(filter==='all'||i.category_id===filter)&&(i.name.toLowerCase().includes(q)||(i.location||'').toLowerCase().includes(q)||(i.serial||'').toLowerCase().includes(q)));
   document.getElementById('items-label').textContent=f.length+' article'+(f.length!==1?'s':'');
   const el=document.getElementById('items-list');
   if(!f.length){el.innerHTML=`<div class="empty"><div class="empty-ico">🔍</div><div class="empty-txt">Aucun article trouvé</div></div>`;return;}
   el.innerHTML=f.map((item,i)=>{
     const st=getSt(item.qty||0,item.min||0);
-    const cat=getCat(item.categoryId);
-    const thumb=item.imageUrl?`<div class="item-thumb"><img src="${esc(item.imageUrl)}" loading="lazy" onerror="this.parentElement.innerHTML='${esc(cat.icon)}'"/></div>`:`<div class="item-thumb">${cat.icon}</div>`;
+    const cat=getCat(item.category_id);
+    const thumb=item.image_url?`<div class="item-thumb"><img src="${esc(item.image_url)}" loading="lazy" onerror="this.parentElement.innerHTML='${esc(cat.icon)}'"/></div>`:`<div class="item-thumb">${cat.icon}</div>`;
     return`<div class="item-card" style="animation-delay:${i*20}ms">
       <div class="item-inner">
         ${thumb}
@@ -503,7 +527,7 @@ function renderAlerts(){
   if(!alertItems.length){el.innerHTML=`<div class="empty"><div class="empty-ico">✅</div><div class="empty-txt">Aucune alerte — tout est en stock !</div></div>`;return;}
   el.innerHTML=alertItems.map((item,i)=>{
     const st=getSt(item.qty,item.min);
-    const cat=getCat(item.categoryId);
+    const cat=getCat(item.category_id);
     return`<div class="alert-card" style="animation-delay:${i*20}ms">
       <div class="alert-icon">${item.qty===0?'🔴':'🟡'}</div>
       <div class="alert-info">
@@ -525,36 +549,11 @@ function renderHist(){
     const col=isDel?'var(--red)':isIn?'var(--green)':'var(--amber)';
     const dotC=isDel?'dot-danger':isIn?'dot-ok':'dot-warn';
     const dStr=isDel?'supprimé':(h.delta>=0?'+':'')+h.delta;
-    const dDate=h.at?.toDate?fmtDate(h.at.toDate().toISOString()):fmtDate(h.at);
     return`<div class="hist-card" style="animation-delay:${i*15}ms">
       <div class="dot ${dotC}"></div>
-      <div class="hist-info"><div class="hist-name">${esc(h.itemName||'—')}</div>${h.note?`<div class="hist-note">${esc(h.note)}</div>`:''}</div>
+      <div class="hist-info"><div class="hist-name">${esc(h.item_name||'—')}</div>${h.note?`<div class="hist-note">${esc(h.note)}</div>`:''}</div>
       <div class="hist-delta" style="color:${col}">${dStr}</div>
-      <div class="hist-meta"><div class="hist-by">${esc(h.by||'—')}</div><div class="hist-date">${dDate}</div></div>
-    </div>`;
-  }).join('');
-}
-
-// Cat selects
-function fillCatSelects(){
-  ['f-cat','e-cat'].forEach(id=>{
-    const el=document.getElementById(id);if(!el)return;
-    const v=el.value;
-    el.innerHTML='<option value="">— Choisir —</option>'+cats.map(c=>`<option value="${c.id}">${c.icon} ${esc(c.name)}</option>`).join('');
-    el.value=v;
-  });
-}
-
-// Cat list
-function renderCatList(){
-  const el=document.getElementById('cat-list');
-  if(!cats.length){el.innerHTML=`<div class="empty"><div class="empty-ico">🏷️</div><div class="empty-txt">Aucune catégorie</div></div>`;return;}
-  el.innerHTML=cats.map(c=>{
-    const cnt=items.filter(i=>i.categoryId===c.id).length;
-    return`<div class="cat-card">
-      <div class="cat-ico" style="background:${hexA(c.color,.12)}">${c.icon}</div>
-      <div class="cat-info"><div class="cat-name" style="color:${c.color}">${esc(c.name)}</div><div class="cat-count">${cnt} article${cnt!==1?'s':''}</div></div>
-      <div class="cat-del" onclick="delCat('${c.id}')">✕</div>
+      <div class="hist-meta"><div class="hist-by">${esc(h.by_user||'—')}</div><div class="hist-date">${fmtDate(h.at)}</div></div>
     </div>`;
   }).join('');
 }
@@ -570,15 +569,21 @@ window.addCategory=async function(){
   const name=document.getElementById('c-name').value.trim();
   if(!name)return;
   try{
-    await addDoc(collection(db,'categories'),{name,icon:selEmoji,color:selColor,createdAt:serverTimestamp()});
+    const row=await sbFetch('categories',{method:'POST',body:JSON.stringify({name,icon:selEmoji,color:selColor})});
+    cats=[...cats,...(Array.isArray(row)?row:[row])];
     document.getElementById('c-name').value='';
     showToast('✓ Catégorie "'+name+'" créée','ok');
+    renderCatList();buildChips();fillCatSelects();
   }catch(e){showToast('Erreur: '+e.message,'danger');}
 };
 window.delCat=async function(id){
   if(!confirm('Supprimer cette catégorie ?'))return;
-  try{await deleteDoc(doc(db,'categories',id));showToast('Catégorie supprimée','warn');}
-  catch(e){showToast('Erreur suppression','danger');}
+  try{
+    await sbFetch('categories?id=eq.'+id,{method:'DELETE'});
+    cats=cats.filter(c=>c.id!==id);
+    showToast('Catégorie supprimée','warn');
+    renderCatList();buildChips();fillCatSelects();renderItems();
+  }catch(e){showToast('Erreur: '+e.message,'danger');}
 };
 
 // Image preview
@@ -597,23 +602,24 @@ window.addItem=async function(){
   const btn=document.getElementById('add-btn');
   btn.disabled=true;btn.textContent='Ajout en cours…';
   try{
-    const ref=await addDoc(collection(db,'items'),{
-      name,qty,min,
+    const payload={name,qty,min,
       unit:document.getElementById('f-unit').value.trim()||'unité',
-      location:document.getElementById('f-loc').value.trim(),
-      serial:document.getElementById('f-serial').value.trim(),
-      categoryId:document.getElementById('f-cat').value||'',
-      imageUrl:document.getElementById('f-img').value.trim(),
-      createdAt:serverTimestamp(),updatedAt:serverTimestamp()
-    });
-    await addDoc(collection(db,'history'),{itemId:ref.id,itemName:name,action:'Ajout',delta:qty,newQty:qty,by:user,at:serverTimestamp(),note:'Création article'});
-    // Reset form
-    ['f-name','f-qty','f-min','f-unit','f-loc','f-serial','f-img'].forEach(id=>document.getElementById(id).value='');
+      location:document.getElementById('f-loc').value.trim()||null,
+      serial:document.getElementById('f-serial').value.trim()||null,
+      category_id:document.getElementById('f-cat').value||null,
+      image_url:document.getElementById('f-img').value.trim()||null
+    };
+    const rows=await sbFetch('items',{method:'POST',body:JSON.stringify(payload)});
+    const newItem=Array.isArray(rows)?rows[0]:rows;
+    items.unshift(newItem);
+    await sbFetch('history',{method:'POST',body:JSON.stringify({item_id:newItem.id,item_name:name,action:'Ajout',delta:qty,new_qty:qty,by_user:user,note:'Création article'})});
+    hist=await sbFetch('history?order=at.desc&limit=100')||[];
+    ['f-name','f-qty','f-min','f-unit','f-loc','f-serial','f-img'].forEach(i=>document.getElementById(i).value='');
     document.getElementById('f-cat').value='';
     document.getElementById('prev-add').style.display='none';
     showToast('✓ "'+name+'" ajouté au stock !','ok');
-    switchTab('stock');
-  }catch(e){showToast('Erreur Firebase: '+e.message,'danger');}
+    refresh();switchTab('stock');
+  }catch(e){showToast('Erreur: '+e.message,'danger');}
   finally{btn.disabled=false;btn.textContent='Ajouter au stock →';}
 };
 
@@ -623,10 +629,13 @@ window.delItem=async function(id){
   if(!item)return;
   if(!confirm('Supprimer "'+item.name+'" ?'))return;
   try{
-    await addDoc(collection(db,'history'),{itemId:id,itemName:item.name,action:'Suppression',delta:0,newQty:0,by:user,at:serverTimestamp(),note:''});
-    await deleteDoc(doc(db,'items',id));
+    await sbFetch('history',{method:'POST',body:JSON.stringify({item_id:id,item_name:item.name,action:'Suppression',delta:0,new_qty:0,by_user:user,note:''})});
+    await sbFetch('items?id=eq.'+id,{method:'DELETE'});
+    items=items.filter(i=>i.id!==id);
+    hist=await sbFetch('history?order=at.desc&limit=100')||[];
     showToast('✕ "'+item.name+'" supprimé','warn');
-  }catch(e){showToast('Erreur suppression: '+e.message,'danger');}
+    refresh();
+  }catch(e){showToast('Erreur: '+e.message,'danger');}
 };
 
 // Adjust
@@ -644,10 +653,14 @@ window.applyAdjust=async function(){
   if(isNaN(delta)||!adjTarget)return;
   const newQty=Math.max(0,(adjTarget.qty||0)+delta);
   try{
-    await updateDoc(doc(db,'items',adjTarget.id),{qty:newQty,updatedAt:serverTimestamp()});
-    await addDoc(collection(db,'history'),{itemId:adjTarget.id,itemName:adjTarget.name,action:delta>=0?'Entrée':'Sortie',delta,newQty,by:user,at:serverTimestamp(),note});
+    await sbFetch('items?id=eq.'+adjTarget.id,{method:'PATCH',body:JSON.stringify({qty:newQty,updated_at:new Date().toISOString()})});
+    await sbFetch('history',{method:'POST',body:JSON.stringify({item_id:adjTarget.id,item_name:adjTarget.name,action:delta>=0?'Entrée':'Sortie',delta,new_qty:newQty,by_user:user,note})});
+    const idx=items.findIndex(i=>i.id===adjTarget.id);
+    if(idx!==-1){items[idx].qty=newQty;}
+    hist=await sbFetch('history?order=at.desc&limit=100')||[];
     closeModal('adjust');
     showToast((delta>=0?'↑ +':'↓ ')+delta+' — '+adjTarget.name,delta>=0?'ok':'warn');
+    refresh();
   }catch(e){showToast('Erreur: '+e.message,'danger');}
 };
 
@@ -662,29 +675,32 @@ window.openEdit=function(id){
   document.getElementById('e-unit').value=editTarget.unit||'';
   document.getElementById('e-loc').value=editTarget.location||'';
   document.getElementById('e-serial').value=editTarget.serial||'';
-  document.getElementById('e-cat').value=editTarget.categoryId||'';
-  document.getElementById('e-img').value=editTarget.imageUrl||'';
+  document.getElementById('e-cat').value=editTarget.category_id||'';
+  document.getElementById('e-img').value=editTarget.image_url||'';
   const p=document.getElementById('prev-edit');
-  if(editTarget.imageUrl){p.src=editTarget.imageUrl;p.style.display='block';}else p.style.display='none';
+  if(editTarget.image_url){p.src=editTarget.image_url;p.style.display='block';}else p.style.display='none';
   document.getElementById('modal-edit').style.display='flex';
 };
 window.saveEdit=async function(){
   if(!editTarget)return;
+  const name=document.getElementById('e-name').value.trim();
   try{
-    const name=document.getElementById('e-name').value.trim();
-    await updateDoc(doc(db,'items',editTarget.id),{
-      name,
+    const payload={name,
       qty:parseInt(document.getElementById('e-qty').value)||0,
       min:parseInt(document.getElementById('e-min').value)||0,
       unit:document.getElementById('e-unit').value.trim()||'unité',
-      location:document.getElementById('e-loc').value.trim(),
-      serial:document.getElementById('e-serial').value.trim(),
-      categoryId:document.getElementById('e-cat').value||'',
-      imageUrl:document.getElementById('e-img').value.trim(),
-      updatedAt:serverTimestamp()
-    });
+      location:document.getElementById('e-loc').value.trim()||null,
+      serial:document.getElementById('e-serial').value.trim()||null,
+      category_id:document.getElementById('e-cat').value||null,
+      image_url:document.getElementById('e-img').value.trim()||null,
+      updated_at:new Date().toISOString()
+    };
+    await sbFetch('items?id=eq.'+editTarget.id,{method:'PATCH',body:JSON.stringify(payload)});
+    const idx=items.findIndex(i=>i.id===editTarget.id);
+    if(idx!==-1)items[idx]={...items[idx],...payload};
     closeModal('edit');
     showToast('✓ "'+name+'" modifié','ok');
+    refresh();
   }catch(e){showToast('Erreur: '+e.message,'danger');}
 };
 
