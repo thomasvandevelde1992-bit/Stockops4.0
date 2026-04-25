@@ -200,13 +200,29 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .cat-count{font-size:10px;color:var(–text3);margin-top:1px;}
 .cat-del{background:rgba(192,57,43,.07);border:1.5px solid rgba(192,57,43,.2);color:#c03920;border-radius:7px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;flex-shrink:0;}
 
-/* EMOJI/COLOR PICKERS */
-.emoji-grid{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;}
-.emoji-btn{width:32px;height:32px;border-radius:8px;background:var(–bg3);border:1.5px solid transparent;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
-.emoji-btn.sel{border-color:var(–accent);background:rgba(107,122,58,.12);}
+/* EMOJI PICKER */
+.emoji-picker-wrap{margin-top:4px;}
+.emoji-search-inp{width:100%;background:var(–bg3);border:1.5px solid var(–border);border-radius:9px;padding:8px 12px;color:var(–text);font-family:‘Outfit’,sans-serif;font-size:14px;outline:none;transition:border-color .2s;margin-bottom:6px;}
+.emoji-search-inp:focus{border-color:var(–accent);}
+.emoji-search-inp::placeholder{color:var(–text3);}
+.emoji-preview-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:7px 10px;background:rgba(107,122,58,.08);border:1.5px solid rgba(107,122,58,.25);border-radius:9px;}
+.emoji-preview-big{font-size:26px;}
+.emoji-preview-label{font-size:12px;color:var(–text2);font-weight:600;}
+.emoji-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:3px;max-height:160px;overflow-y:auto;background:var(–bg3);border-radius:9px;padding:6px;}
+.emoji-btn{aspect-ratio:1;border-radius:7px;background:transparent;border:1.5px solid transparent;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all .12s;}
+.emoji-btn:hover{background:var(–bg2);}
+.emoji-btn.sel{border-color:var(–accent);background:rgba(107,122,58,.15);}
+.emoji-none{text-align:center;padding:20px;color:var(–text3);font-size:12px;grid-column:1/-1;}
+/* COLOR PICKERS */
 .color-grid{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}
 .color-swatch{width:26px;height:26px;border-radius:7px;cursor:pointer;border:2.5px solid transparent;transition:transform .15s,border-color .15s;}
 .color-swatch.sel{border-color:var(–text);transform:scale(1.18);}
+/* CLIENT FORM */
+.client-form-card{background:var(–bg2);border:1.5px solid var(–border);border-radius:var(–radius);padding:14px;margin-bottom:12px;box-shadow:var(–shadow);}
+.client-form-row{display:flex;gap:8px;align-items:flex-end;}
+.client-form-row .finput{flex:1;}
+.client-add-btn{background:linear-gradient(135deg,var(–accent),var(–accent2));color:#fff;border:none;border-radius:9px;padding:9px 14px;font-family:‘Outfit’,sans-serif;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;flex-shrink:0;}
+.client-del{background:rgba(192,57,43,.07);border:1.5px solid rgba(192,57,43,.2);color:#c03920;border-radius:7px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;flex-shrink:0;}
 
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(44,58,34,.5);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:200;display:flex;align-items:flex-end;justify-content:center;padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom));animation:fadeIn .2s ease;}
@@ -359,6 +375,14 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   <!-- CLIENTS -->
 
   <div id="tab-clients" class="content" style="display:none">
+    <div class="client-form-card">
+      <div class="form-title" style="margin-bottom:10px">👤 Nouveau client</div>
+      <div class="client-form-row">
+        <input class="finput" id="new-client-name" placeholder="Nom du client…" autocomplete="off"/>
+        <input class="finput" id="new-client-note" placeholder="Note (optionnel)" autocomplete="off" style="max-width:130px"/>
+        <button class="client-add-btn" onclick="addClient()">+ Ajouter</button>
+      </div>
+    </div>
     <input class="client-search" id="client-search" placeholder="🔍 Rechercher un client…" oninput="renderClients()"/>
     <div class="sec-title" id="clients-label">Clients</div>
     <div id="clients-list"><div class="loading"><div class="spinner"></div> Chargement…</div></div>
@@ -372,7 +396,17 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
       <div class="form-title">🏷️ Nouvelle catégorie</div>
       <div class="form-grid">
         <div class="fg full"><label class="flabel">Nom *</label><input class="finput" id="c-name" placeholder="ex: PVC, PEHD, Acier…" autocomplete="off"/></div>
-        <div class="fg full"><label class="flabel">Icône</label><div class="emoji-grid" id="emoji-grid"></div></div>
+        <div class="fg full">
+          <label class="flabel">Icône</label>
+          <div class="emoji-picker-wrap">
+            <input class="emoji-search-inp" id="emoji-search" placeholder="🔍 Rechercher un emoji… (ex: maison, voiture, outil)" oninput="searchEmoji(this.value)"/>
+            <div class="emoji-preview-row">
+              <div class="emoji-preview-big" id="emoji-preview">📦</div>
+              <div class="emoji-preview-label" id="emoji-preview-label">Emoji sélectionné</div>
+            </div>
+            <div class="emoji-grid" id="emoji-grid"></div>
+          </div>
+        </div>
         <div class="fg full"><label class="flabel">Couleur</label><div class="color-grid" id="color-grid"></div></div>
       </div>
       <button class="fsubmit" onclick="addCategory()">Créer la catégorie →</button>
@@ -468,15 +502,17 @@ function getClients(){
 // ── LOAD ──
 async function loadAll(){
   try{
-    const [r1,r2,r3]=await Promise.all([
+    const [r1,r2,r3,r4]=await Promise.all([
       sb.from('categories').select('*').order('created_at',{ascending:true}),
       sb.from('items').select('*').order('created_at',{ascending:false}),
-      sb.from('history').select('*').order('at',{ascending:false}).limit(200)
+      sb.from('history').select('*').order('at',{ascending:false}).limit(200),
+      sb.from('clients').select('*').order('name',{ascending:true})
     ]);
     if(r1.error)throw r1.error;
     if(r2.error)throw r2.error;
     if(r3.error)throw r3.error;
     cats=r1.data||[];items=r2.data||[];hist=r3.data||[];
+    clients=r4.data||[];
   }catch(e){showToast('Erreur chargement: '+(e.message||e),'danger');}
 }
 
@@ -485,8 +521,6 @@ function refresh(){
   renderCatList();buildChips();fillCatSelects();
   renderHist();renderClients();fillClientDatalist();
 }
-
-// ── AUTO-REFRESH toutes les 5s ──
 function startAutoRefresh(){
   if(refreshTimer)clearInterval(refreshTimer);
   refreshTimer=setInterval(async()=>{
@@ -695,27 +729,47 @@ function renderHist(){
 function renderClients(){
   const el=document.getElementById('clients-list');
   const q=(document.getElementById('client-search').value||'').toLowerCase();
-  let clients=getClients().filter(c=>c.name.toLowerCase().includes(q));
-  document.getElementById('clients-label').textContent=clients.length+' client'+(clients.length!==1?'s':'');
-  if(!clients.length){el.innerHTML=`<div class="empty"><div class="empty-ico">👥</div><div class="empty-txt">${q?'Aucun client trouvé':'Aucun client encore — associez un client lors d\'une sortie de stock'}</div></div>`;return;}
-  el.innerHTML=clients.map((c,i)=>{
+
+  // Merge stored clients + clients from history
+  const histClients=getClients();
+  const storedNames=new Set(clients.map(c=>c.name.trim().toLowerCase()));
+  const merged=[...clients.map(c=>({
+    id:c.id,name:c.name,note:c.note,
+    moves:histClients.find(h=>h.name.toLowerCase()===c.name.toLowerCase())?.moves||[],
+    total:histClients.find(h=>h.name.toLowerCase()===c.name.toLowerCase())?.total||0,
+    stored:true
+  })),...histClients.filter(h=>!storedNames.has(h.name.toLowerCase())).map(h=>({
+    id:null,name:h.name,note:'',moves:h.moves,total:h.total,stored:false
+  }))].sort((a,b)=>a.name.localeCompare(b.name));
+
+  const filtered=merged.filter(c=>c.name.toLowerCase().includes(q));
+  document.getElementById('clients-label').textContent=filtered.length+' client'+(filtered.length!==1?'s':'');
+
+  if(!filtered.length){
+    el.innerHTML=`<div class="empty"><div class="empty-ico">👥</div><div class="empty-txt">${q?'Aucun client trouvé':'Ajoutez un client ci-dessus ou associez-en un lors d\'une sortie de stock'}</div></div>`;
+    return;
+  }
+  el.innerHTML=filtered.map((c,i)=>{
     const initial=c.name.charAt(0).toUpperCase();
     const sorties=c.moves.filter(m=>m.action==='Sortie').length;
     const rows=c.moves.slice(0,20).map(m=>`<div class="client-hist-row">
       <div class="chr-name">${esc(m.item_name||'—')}</div>
-      <div class="chr-delta">${(m.delta>=0?'+':'')+m.delta} ${esc('')}</div>
+      <div class="chr-delta">${(m.delta>=0?'+':'')+m.delta}</div>
       <div class="chr-date">${fmtDateShort(m.at)}</div>
     </div>`).join('');
-    return`<div class="client-card" style="animation-delay:${i*20}ms" onclick="toggleClient(this)">
-      <div class="client-header">
+    return`<div class="client-card" style="animation-delay:${i*20}ms">
+      <div class="client-header" onclick="toggleClient(this.parentElement)">
         <div class="client-avatar">${initial}</div>
         <div class="client-info">
           <div class="client-name">${esc(c.name)}</div>
-          <div class="client-stats">${sorties} sortie${sorties!==1?'s':''} · ${c.moves.length} mouvement${c.moves.length!==1?'s':''}</div>
+          <div class="client-stats">${c.note?esc(c.note)+' · ':''}${sorties} sortie${sorties!==1?'s':''} · ${c.moves.length} mouvement${c.moves.length!==1?'s':''}</div>
         </div>
-        <div class="client-total">−${c.total}</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="client-total">−${c.total}</div>
+          ${c.stored?`<div class="client-del" onclick="event.stopPropagation();delClient('${c.id}','${esc(c.name)}')">✕</div>`:''}
+        </div>
       </div>
-      <div class="client-hist">${rows||'<div style="font-size:11px;color:var(--text3);padding:6px 0">Aucun mouvement</div>'}</div>
+      <div class="client-hist">${rows||'<div style="font-size:11px;color:var(--text3);padding:6px 0">Aucun mouvement encore</div>'}</div>
     </div>`;
   }).join('');
 }
@@ -725,11 +779,123 @@ window.toggleClient=function(el){
   if(hist)hist.classList.toggle('open');
 };
 
-// ── EMOJI/COLOR ──
-function buildEmoji(){document.getElementById('emoji-grid').innerHTML=EMOJIS.map(e=>`<div class="emoji-btn${e===selEmoji?' sel':''}" onclick="selE('${e}')">${e}</div>`).join('');}
-function buildColor(){document.getElementById('color-grid').innerHTML=COLORS.map(c=>`<div class="color-swatch${c===selColor?' sel':''}" style="background:${c}" onclick="selC('${c}')"></div>`).join('');}
-window.selE=e=>{selEmoji=e;buildEmoji();};
+// ── EMOJI PICKER ──
+const EMOJI_DB=[
+  // Objets & outils
+  '📦','🔧','⚙️','🪛','🔩','🛠️','📋','💡','🖥️','📱','🗃️','🧰','🪝','🔌','🧱','🪣','🏗️','⚗️','🧴','📐','✂️','🪚','🔑','🗄️',
+  '🔨','⛏️','🪓','🔒','🔓','🗝️','🔗','⛓️','🪤','🧲','💊','🩺','🩻','🔬','🔭','📡','🖨️','⌨️','🖱️','💾','💿','📀','📼','📷',
+  '📸','📹','🎥','📞','☎️','📟','📠','📺','📻','⏰','⏱️','⌚','💻','🖥️','🖨️','⌛','⏳','📡','🔋','🪫','🔦','🕯️','🪔',
+  // Maison & bâtiment
+  '🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏧','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰','🏗️','🏘️','🏚️','🏛️','⛪','🕌','🕍','⛩️',
+  // Véhicules & transport
+  '🚗','🚕','🚙','🚌','🚎','🚐','🚑','🚒','🚓','🚔','🚖','🚗','🚘','🚚','🚛','🚜','🏎️','🏍️','🛵','🚲','🛴','🛺','🚁','✈️',
+  '🚀','🛸','🚂','🚃','🚄','🚅','🚆','🚇','🚈','🚉','🚊','🚝','🚞','🚋','🛳️','🚢','⛴️','🛥️','🚤','⛵','🛶','🚣',
+  // Nature & animaux
+  '🌲','🌳','🌴','🌵','🌾','🌿','🍀','🍁','🍂','🍃','🌱','🌊','🌋','⛰️','🏔️','🗻','🏕️','🌅','🌄','🌠','🎑','🏞️',
+  '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🦋','🐛','🐝','🪲','🐞','🦗','🕷️',
+  // Nourriture & boissons
+  '🍎','🍊','🍋','🍇','🍓','🫐','🍑','🥝','🍒','🍌','🥕','🌽','🧅','🧄','🥦','🍅','🥑','🧆','🍕','🍔','🌮','🌯',
+  '🥗','🍜','🍝','🍛','🍣','🍱','🥟','🍤','🍙','🍚','🧁','🎂','🍰','🍩','🍪','☕','🧃','🧊','🥤','🧋','🍺','🍷',
+  // Sport & loisirs
+  '⚽','🏀','🏈','⚾','🎾','🏐','🏉','🥏','🎱','🏓','🏸','🏒','🥊','🥋','🎯','⛳','🎣','🤿','🎽','🛹','🛷','🏂',
+  '🧗','🏇','🤸','⛹️','🏋️','🚴','🤼','🤺','🏊','🏄','🚣','🧘','🎪','🎭','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🎷',
+  // Symboles & formes
+  '❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','⭐','🌟','💫','✨',
+  '🔥','💥','❄️','🌈','☀️','🌤️','⛅','🌦️','🌧️','⛈️','🌩️','🌨️','🌪️','🌊','💧','💦','🌫️','🌬️','🪐','🌙','⚡',
+  // Personnes & métiers
+  '👷','👨‍🔧','👩‍🔧','👨‍🏭','👩‍🏭','👨‍💼','👩‍💼','👨‍🔬','👩‍🔬','👨‍🎨','👩‍🎨','👮','💂','🕵️','👨‍⚕️','👩‍⚕️','🧑‍🚒','👨‍🍳','👩‍🍳',
+  // Objets bureau & papeterie
+  '📝','📄','📃','📑','🗒️','🗓️','📆','📅','📇','📌','📍','🗺️','📏','📎','🖇️','✂️','🗃️','🗂️','🗄️','🗑️','🔏','🔐','🔒','🔓',
+  // Divers utiles
+  '💰','💳','💴','💵','💶','💷','🏷️','🎁','🎀','🎊','🎉','🎈','🎏','🎐','🏆','🥇','🥈','🥉','🎖️','🏅','🎗️','🎫','🎟️',
+  '🧩','🪆','🪅','🎭','🎪','🎠','🎡','🎢','🎯','🎲','🧸','♟️','🎮','🕹️','🃏','🀄','🎴','🔮','🪬','🧿','🪩',
+];
+
+const EMOJI_KEYWORDS={
+  '📦':'boite colis paquet stock','🔧':'outil clé réparer','⚙️':'engrenage paramètre','🪛':'tournevis','🔩':'vis boulon écrou',
+  '🛠️':'outils réparer bricoler','🏗️':'chantier construction','🏠':'maison habitation','🏢':'bâtiment bureau immeuble',
+  '🚗':'voiture automobile','🚛':'camion transport livraison','🚚':'camionnette livraison','✈️':'avion voyage transport',
+  '🌲':'arbre bois forêt','🌿':'plante herbe végétal','💡':'ampoule idée lumière éclairage','🔌':'prise électrique câble',
+  '💊':'médicament pilule','🩺':'médecin santé stéthoscope','🔬':'microscope laboratoire science',
+  '💻':'ordinateur informatique','📱':'téléphone mobile','🖥️':'écran moniteur ordinateur',
+  '🍎':'pomme fruit','🚲':'vélo cyclisme','⚽':'football sport ballon','❤️':'coeur amour',
+  '🔥':'feu chaud flamme','💧':'eau liquide','❄️':'glace froid neige','⭐':'étoile note',
+  '🏆':'trophée victoire champion','💰':'argent monnaie finance','🎁':'cadeau présent',
+  '🔑':'clé accès porte serrure','🗂️':'dossier classeur fichier','📋':'liste formulaire document',
+  '🧰':'boite outils bricolage','🧲':'aimant magnétique','🪣':'seau récipient','🧱':'brique mur construction',
+  '🌊':'vague mer eau','🌈':'arc-en-ciel couleur','🐶':'chien animal','🐱':'chat animal',
+};
+
+let emojiPage=EMOJI_DB;
+
+function searchEmoji(q){
+  const v=q.trim().toLowerCase();
+  if(!v){emojiPage=EMOJI_DB;}
+  else{
+    emojiPage=EMOJI_DB.filter(e=>{
+      const kw=EMOJI_KEYWORDS[e]||'';
+      return kw.includes(v)||e===v;
+    });
+    if(!emojiPage.length){
+      // Fallback: show all, user can still pick any
+      emojiPage=EMOJI_DB;
+    }
+  }
+  renderEmojiGrid();
+}
+
+function renderEmojiGrid(){
+  const el=document.getElementById('emoji-grid');
+  if(!el)return;
+  const show=emojiPage.slice(0,160);
+  el.innerHTML=show.map(e=>`<div class="emoji-btn${e===selEmoji?' sel':''}" onclick="selE('${e}')" title="${e}">${e}</div>`).join('');
+}
+
+function buildEmoji(){renderEmojiGrid();}
+
+window.selE=function(e){
+  selEmoji=e;
+  const prev=document.getElementById('emoji-preview');
+  const lbl=document.getElementById('emoji-preview-label');
+  if(prev)prev.textContent=e;
+  if(lbl)lbl.textContent='Emoji sélectionné — clique pour en choisir un autre';
+  renderEmojiGrid();
+};
+
+function buildColor(){
+  document.getElementById('color-grid').innerHTML=COLORS.map(c=>`<div class="color-swatch${c===selColor?' sel':''}" style="background:${c}" onclick="selC('${c}')"></div>`).join('');
+}
 window.selC=c=>{selColor=c;buildColor();};
+
+// ── CLIENTS ──
+let clients=[];
+
+async function loadClients(){
+  const {data,error}=await sb.from('clients').select('*').order('name',{ascending:true});
+  if(!error)clients=data||[];
+}
+
+window.addClient=async function(){
+  const name=document.getElementById('new-client-name').value.trim();
+  const note=document.getElementById('new-client-note').value.trim();
+  if(!name){showToast('Entrez un nom de client','warn');return;}
+  const {data,error}=await sb.from('clients').insert({name,note:note||null}).select().single();
+  if(error){showToast('Erreur: '+error.message,'danger');return;}
+  clients=[...clients,data].sort((a,b)=>a.name.localeCompare(b.name));
+  document.getElementById('new-client-name').value='';
+  document.getElementById('new-client-note').value='';
+  showToast('✓ Client "'+name+'" ajouté','ok');
+  fillClientDatalist();renderClients();
+};
+
+window.delClient=async function(id,name){
+  if(!confirm('Supprimer le client "'+name+'" ?'))return;
+  const {error}=await sb.from('clients').delete().eq('id',id);
+  if(error){showToast('Erreur: '+error.message,'danger');return;}
+  clients=clients.filter(c=>c.id!==id);
+  showToast('Client supprimé','warn');
+  fillClientDatalist();renderClients();
+};
 
 // ── ADD CATEGORY ──
 window.addCategory=async function(){
